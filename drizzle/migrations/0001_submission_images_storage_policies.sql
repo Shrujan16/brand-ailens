@@ -1,0 +1,2 @@
+CREATE POLICY "demo upload submission images" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'submission-images');
+CREATE POLICY "demo read submission images" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'submission-images');
