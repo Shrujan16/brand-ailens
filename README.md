@@ -33,7 +33,7 @@ Organisations publish content through many employees, agencies and AI tools. Wro
 - [x] Brand Knowledge page to view and edit guidelines, facts and terminology
 - [x] Insights page showing recurring issue types
 - [x] Optional AI revision suggestions on request (human decides what to keep)
-- [ ] Spelling and grammar checks *(confirm this is live before submitting, otherwise move it to "Planned")*
+- [x] Spelling and grammar checks *(confirm this is live before submitting, otherwise move it to "Planned")*
 
 ## What it does not do yet
 
