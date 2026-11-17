@@ -1,12 +1,18 @@
 import { queryOptions } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import type { Knowledge } from "@/lib/brand-engine";
+import {
+  getImageUrl,
+  getKnowledge,
+  getSubmissionDetail,
+  listAllFindings,
+  listSubmissions,
+  uploadSubmissionImage,
+} from "@/lib/brandlens.functions";
 
 export type Submission = Tables<"submissions">;
 export type FindingRow = Tables<"findings">;
 export type CommentRow = Tables<"comments">;
-export type AuditRow = Tables<"audit_log">;
 export type RuleRow = Tables<"brand_rules">;
 export type FactRow = Tables<"approved_facts">;
 export type TermRow = Tables<"terminology">;
@@ -20,96 +26,36 @@ export const STATUS_LABEL: Record<Status, string> = {
 };
 export const CONTENT_TYPES = ["Social post", "Ad", "Email", "Document"] as const;
 
-function must<T>(res: { data: T | null; error: { message: string } | null }): T {
-  if (res.error) throw new Error(res.error.message);
-  return res.data as T;
-}
-
 export const knowledgeQuery = queryOptions({
   queryKey: ["knowledge"],
   queryFn: async () => {
-    const [rules, facts, terms] = await Promise.all([
-      supabase.from("brand_rules").select("*").order("sort").order("created_at"),
-      supabase.from("approved_facts").select("*").order("created_at"),
-      supabase.from("terminology").select("*").order("created_at"),
-    ]);
-    const knowledge: Knowledge = {
-      rules: must(rules),
-      facts: must(facts).map((f) => ({
-        ...f,
-        numeric_value: f.numeric_value == null ? null : Number(f.numeric_value),
-      })),
-      terms: must(terms),
-    };
-    return knowledge;
+    const k = await getKnowledge();
+    const knowledge: Knowledge = k;
+    return { ...k, ...knowledge };
   },
 });
 
-
 export const submissionsQuery = queryOptions({
   queryKey: ["submissions"],
-  queryFn: async () =>
-    must(await supabase.from("submissions").select("*").order("updated_at", { ascending: false })),
+  queryFn: () => listSubmissions(),
 });
 
 export const allFindingsQuery = queryOptions({
   queryKey: ["findings", "all"],
-  queryFn: async () =>
-    must(
-      await supabase
-        .from("findings")
-        .select("id, submission_id, revision, category, severity, status, citation, rule_ref"),
-    ),
+  queryFn: () => listAllFindings(),
 });
 
 export const submissionDetailQuery = (id: string) =>
   queryOptions({
     queryKey: ["submission", id],
-    queryFn: async () => {
-      const [sub, findings, comments, audit] = await Promise.all([
-        supabase.from("submissions").select("*").eq("id", id).maybeSingle(),
-        supabase.from("findings").select("*").eq("submission_id", id).order("created_at"),
-        supabase.from("comments").select("*").eq("submission_id", id).order("created_at"),
-        supabase
-          .from("audit_log")
-          .select("*")
-          .eq("submission_id", id)
-          .order("created_at", { ascending: false }),
-      ]);
-      return {
-        submission: must(sub),
-        findings: must(findings),
-        comments: must(comments),
-        audit: must(audit),
-      };
-    },
+    queryFn: () => getSubmissionDetail({ data: { id } }),
   });
-
-export async function logAudit(
-  submissionId: string | null,
-  actorRole: string,
-  action: string,
-  details: Record<string, unknown> = {},
-) {
-  const { error } = await supabase.from("audit_log").insert({
-    submission_id: submissionId,
-    actor_role: actorRole,
-    action,
-    details: details as never,
-  });
-  if (error) throw new Error(error.message);
-}
-
-const IMAGE_BUCKET = "submission-images";
 
 /** Uploads an image to private storage and returns its storage path. */
 export async function uploadImage(file: File) {
-  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const path = `uploads/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage
-    .from(IMAGE_BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
-  if (error) throw new Error(error.message);
+  const form = new FormData();
+  form.append("file", file);
+  const { path } = await uploadSubmissionImage({ data: form });
   return path;
 }
 
@@ -117,7 +63,6 @@ export async function uploadImage(file: File) {
 export async function resolveImageUrl(ref: string | null | undefined) {
   if (!ref) return null;
   if (/^(https?:|data:|blob:|\/)/.test(ref)) return ref;
-  const { data, error } = await supabase.storage.from(IMAGE_BUCKET).createSignedUrl(ref, 60 * 60);
-  if (error) return null;
-  return data.signedUrl;
+  const { url } = await getImageUrl({ data: { path: ref } });
+  return url;
 }

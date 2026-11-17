@@ -23,11 +23,11 @@ import { FindingCard } from "@/components/FindingCard";
 import { HighlightedText } from "@/components/HighlightedText";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmissionImage } from "@/components/SubmissionImage";
-import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { saveSubmission } from "@/lib/brandlens.functions";
 import {
   CONTENT_TYPES,
   knowledgeQuery,
-  logAudit,
   submissionDetailQuery,
   submissionsQuery,
   uploadImage,
@@ -103,6 +103,7 @@ function CreatorPage() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState<null | "draft" | "in_review">(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const saveSubmissionFn = useServerFn(saveSubmission);
 
   const editing: Submission | null = edit ? (submissions.find((s) => s.id === edit) ?? null) : null;
 
@@ -215,42 +216,16 @@ function CreatorPage() {
       setHasRun(true);
       const base = {
         title: title.trim() || "Untitled",
-        content_type: contentType,
+        content_type: contentType as (typeof CONTENT_TYPES)[number],
         body: text,
         image_url: imageRef,
         image_alt: imageAlt,
         text_color: useColors ? textColor : null,
         bg_color: useColors ? bgColor : null,
         status,
-        updated_at: new Date().toISOString(),
       };
-      let id: string;
-      let revision = 1;
-      let action = status === "draft" ? "draft_saved" : "submitted";
-      if (editing) {
-        id = editing.id;
-        revision =
-          editing.status === "changes_requested" || editing.status === "approved"
-            ? editing.revision + 1
-            : editing.revision;
-        if (revision > editing.revision && status === "in_review") action = "resubmitted";
-        const { error } = await supabase.from("submissions").update({ ...base, revision }).eq("id", id);
-        if (error) throw error;
-        await supabase.from("findings").delete().eq("submission_id", id).eq("revision", revision);
-      } else {
-        const { data, error } = await supabase
-          .from("submissions")
-          .insert({ ...base, revision, author_name: "Creator" })
-          .select("id")
-          .single();
-        if (error) throw error;
-        id = data.id;
-      }
-
-      const rows = [
+      const findingRows = [
         ...current.map((f) => ({
-          submission_id: id,
-          revision,
           rule_ref: f.ruleRef,
           category: f.category,
           severity: f.severity,
@@ -258,11 +233,10 @@ function CreatorPage() {
           citation: f.citation,
           explanation: f.explanation,
           suggestion: f.suggestion,
-          status: "open",
+          status: "open" as const,
+          dismiss_reason: null,
         })),
         ...resolutions.map((r) => ({
-          submission_id: id,
-          revision,
           rule_ref: r.finding.ruleRef,
           category: r.finding.category,
           severity: r.finding.severity,
@@ -274,15 +248,8 @@ function CreatorPage() {
           dismiss_reason: r.reason ?? null,
         })),
       ];
-      if (rows.length) {
-        const { error } = await supabase.from("findings").insert(rows);
-        if (error) throw error;
-      }
-      await logAudit(id, role, action, {
-        revision,
-        body: text,
-        open_findings: current.length,
-        resolved: resolutions.length,
+      const { id } = await saveSubmissionFn({
+        data: { ...base, editId: editing?.id ?? null, role, findings: findingRows },
       });
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["submissions"] }),

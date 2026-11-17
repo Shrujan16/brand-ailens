@@ -19,8 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { HighlightedText, rangesFromSnippets } from "@/components/HighlightedText";
 import { SeverityBadge, StatusBadge } from "@/components/StatusBadge";
 import { SubmissionImage } from "@/components/SubmissionImage";
-import { supabase } from "@/integrations/supabase/client";
-import { logAudit, submissionDetailQuery, type FindingRow } from "@/lib/data";
+import { useServerFn } from "@tanstack/react-start";
+import { addComment as addCommentServer, decideSubmission } from "@/lib/brandlens.functions";
+import { submissionDetailQuery, type FindingRow } from "@/lib/data";
 import { contrastRatio } from "@/lib/brand-engine";
 import { useRole } from "@/lib/role";
 
@@ -67,6 +68,8 @@ function ReviewDetail() {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState<null | "comment" | "approve" | "changes">(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const addCommentFn = useServerFn(addCommentServer);
+  const decideFn = useServerFn(decideSubmission);
 
   const s = data.submission!;
   const current = data.findings.filter((f) => f.revision === s.revision);
@@ -88,9 +91,7 @@ function ReviewDetail() {
     if (!comment.trim()) return;
     setBusy("comment");
     try {
-      const { error } = await supabase.from("comments").insert({ submission_id: id, author_role: role, body: comment.trim() });
-      if (error) throw error;
-      await logAudit(id, role, "commented", { revision: s.revision });
+      await addCommentFn({ data: { submissionId: id, role, body: comment.trim() } });
       setComment("");
       await refresh();
     } catch (e) {
@@ -111,16 +112,7 @@ function ReviewDetail() {
     }
     setBusy(decision === "approved" ? "approve" : "changes");
     try {
-      if (comment.trim()) {
-        const { error } = await supabase.from("comments").insert({ submission_id: id, author_role: "reviewer", body: comment.trim() });
-        if (error) throw error;
-      }
-      const { error } = await supabase
-        .from("submissions")
-        .update({ status: decision, updated_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw error;
-      await logAudit(id, "reviewer", decision, { revision: s.revision, comment: comment.trim() || undefined });
+      await decideFn({ data: { submissionId: id, role, decision, comment: comment.trim() } });
       setComment("");
       await refresh();
       toast.success(decision === "approved" ? "Approved for publishing" : "Changes requested");
@@ -282,7 +274,7 @@ function ReviewDetail() {
             </h2>
             <ol className="mt-4 space-y-4 border-l-2 border-border pl-4">
               {data.audit.map((a) => {
-                const d = (a.details ?? {}) as { revision?: number; body?: string; comment?: string; open_findings?: number };
+                const d = a.details as { revision?: number; body?: string; comment?: string; open_findings?: number };
                 return (
                   <li key={a.id} className="relative">
                     <span className="absolute -left-[23px] top-1 h-3 w-3 rounded-full border-2 border-card bg-primary" />

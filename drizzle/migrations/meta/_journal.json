@@ -15,6 +15,13 @@
       "when": 1794842434753,
       "tag": "0001_submission_images_storage_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794878003675,
+      "tag": "0002_lock_down_direct_client_access",
+      "breakpoints": true
     }
   ]
 }

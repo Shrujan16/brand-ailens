@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SeverityBadge } from "@/components/StatusBadge";
-import { supabase } from "@/integrations/supabase/client";
-import { knowledgeQuery, logAudit } from "@/lib/data";
+import { useServerFn } from "@tanstack/react-start";
+import { mutateKnowledge } from "@/lib/brandlens.functions";
+import { knowledgeQuery } from "@/lib/data";
 import { useRole } from "@/lib/role";
 
 export const Route = createFileRoute("/knowledge")({
@@ -193,16 +194,9 @@ function fromDraft(draft: Record<string, string>, fields: Field[]) {
 function useSaver(table: Table) {
   const qc = useQueryClient();
   const { role } = useRole();
+  const mutate = useServerFn(mutateKnowledge);
   return async (op: "insert" | "update" | "delete", payload: Record<string, unknown>, id?: string) => {
-    const q = supabase.from(table);
-    const res =
-      op === "insert"
-        ? await q.insert(payload as never)
-        : op === "update"
-          ? await q.update(payload as never).eq("id", id!)
-          : await q.delete().eq("id", id!);
-    if (res.error) throw new Error(res.error.message);
-    await logAudit(null, role, `knowledge_${op}`, { table, id, ...payload });
+    await mutate({ data: { table, op, id, role, values: op === "delete" ? undefined : payload } });
     await qc.invalidateQueries({ queryKey: ["knowledge"] });
   };
 }
@@ -335,7 +329,11 @@ function AddRow({ table, fields, defaults }: { table: Table; fields: Field[]; de
     try {
       const payload = fromDraft(draft, fields);
       if (table === "approved_facts" && !payload["fact_key"]) {
-        payload["fact_key"] = String(payload["label"] || "fact").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+        payload["fact_key"] = String(payload["label"] || "fact")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 60) || "fact";
       }
       await save("insert", payload);
       toast.success("Added");

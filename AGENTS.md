@@ -32,6 +32,6 @@ use the editor.
 ## Project rules (BrandLens)
 
 - Brand checks run in `src/lib/brand-engine.ts` as pure deterministic TypeScript (no AI); every rule reads its data from the brand_rules / approved_facts / terminology tables so editing Brand Knowledge changes checks without code changes. Cover rule changes in `src/test/brand-engine.test.ts`.
-- The app has no sign-in by design (demo for judges): tables use open anon RLS policies and the Creator/Reviewer role is a client-side switch in `src/lib/role.tsx`. Add real auth before using with private data.
-- Submission images live in the private `submission-images` bucket and are shown through signed URLs via `resolveImageUrl` in `src/lib/data.ts` (public buckets are blocked in this workspace).
+- The app has no sign-in by design (demo for judges). Browsers have no direct table or storage access (no anon/authenticated grants or policies); all reads and writes go through validated server functions in `src/lib/brandlens.functions.ts` using the service-role client. Add new data operations there, never as client policies. The Creator/Reviewer role is still a client-side switch in `src/lib/role.tsx`, so add real auth before using with private data.
+- Submission images live in the private `submission-images` bucket; uploads and signed URLs are created server-side (`uploadSubmissionImage`, `getImageUrl`) because public buckets are blocked and clients have no storage policies.
 - Findings are stored per submission revision; revision history is the audit_log rows (submitted entries carry a body snapshot).
