@@ -146,7 +146,7 @@ function RootComponent() {
             <Outlet />
           </main>
           <footer className="border-t border-border py-5 text-center text-xs text-muted-foreground">
-            BrandLens · Demo brand: GreenLeaf Organics · Deterministic rules, no AI
+            BrandLens · Demo brand: GreenLeaf Organics · Deterministic checks · optional AI suggestions
           </footer>
         </div>
         <Toaster richColors position="top-center" />

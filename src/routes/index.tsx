@@ -23,6 +23,7 @@ import { FindingCard } from "@/components/FindingCard";
 import { HighlightedText } from "@/components/HighlightedText";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmissionImage } from "@/components/SubmissionImage";
+import { AiRevisionPanel } from "@/components/AiRevisionPanel";
 import { useServerFn } from "@tanstack/react-start";
 import { saveSubmission } from "@/lib/brandlens.functions";
 import {
@@ -192,17 +193,49 @@ function CreatorPage() {
     }
   }
 
+  function runCheck() {
+    const found = runBrandCheck(input, knowledge).filter((f) => !dismissed.has(f.key));
+    setHasRun(true);
+    const by = (s: Finding["severity"]) => found.filter((f) => f.severity === s).length;
+    window.__lovableEvents?.track?.("project.brand_check_run", {
+      content_type: contentType,
+      open_findings: found.length,
+      high: by("high"),
+      medium: by("medium"),
+      low: by("low"),
+      score: Math.max(0, 100 - found.reduce((n, f) => n + SEVERITY_WEIGHT[f.severity], 0)),
+    });
+  }
+
+  function trackResolution(f: Finding, action: Resolution["action"]) {
+    window.__lovableEvents?.track?.("project.finding_resolved", {
+      action,
+      category: f.category,
+      severity: f.severity,
+    });
+  }
+
+  function applyAiRevision(revised: string) {
+    setText(revised);
+    setHasRun(true);
+    setDismissed(new Set());
+    setResolutions([]);
+    toast.success("Revision applied", { description: "Findings now reflect the revised draft." });
+  }
+
   function applyFinding(f: Finding, value: string, action: "accepted" | "edited") {
     if (f.target === "text") setText((t) => applyTextFix(t, f, value));
     else if (f.target === "alt") setImageAlt(value);
     else if (f.target === "textColor") setTextColor(value);
     else if (f.target === "bgColor") setBgColor(value);
     setResolutions((r) => [...r, { finding: f, action, applied: value }]);
+    trackResolution(f, action);
   }
 
   function dismissFinding(f: Finding, reason: string) {
     setDismissed((d) => new Set(d).add(f.key));
     setResolutions((r) => [...r, { finding: f, action: "dismissed", reason }]);
+    trackResolution(f, "dismissed");
   }
 
   async function save(status: "draft" | "in_review") {
@@ -248,7 +281,7 @@ function CreatorPage() {
           dismiss_reason: r.reason ?? null,
         })),
       ];
-      const { id } = await saveSubmissionFn({
+      const { id, revision, open } = await saveSubmissionFn({
         data: { ...base, editId: editing?.id ?? null, role, findings: findingRows },
       });
       await Promise.all([
@@ -257,6 +290,13 @@ function CreatorPage() {
         qc.invalidateQueries({ queryKey: ["submission", id] }),
       ]);
       if (status === "in_review") {
+        window.__lovableEvents?.track?.("project.submission_sent", {
+          content_type: base.content_type,
+          revision,
+          is_resubmission: revision > 1,
+          open_findings: open,
+          resolved_findings: resolutions.length,
+        });
         toast.success("Sent to the Reviewer queue", {
           description: `${current.length} open finding(s) included.`,
         });
@@ -289,7 +329,7 @@ function CreatorPage() {
             </h1>
             <p className="mt-2 max-w-xl text-muted-foreground">
               BrandLens checks your copy against GreenLeaf’s tone, approved facts, terminology and visual rules —
-              instantly, with no AI guessing.
+              with deterministic rules. Ask AI for a revision when you want one.
             </p>
           </div>
           <div className="flex gap-2">
@@ -413,13 +453,15 @@ function CreatorPage() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button size="lg" variant="hero" className="flex-1" onClick={() => setHasRun(true)} disabled={!text.trim()}>
+              <Button size="lg" variant="hero" className="flex-1" onClick={runCheck} disabled={!text.trim()}>
                 <ScanSearch /> Run Brand Check
               </Button>
               <Button size="lg" variant="outline" onClick={() => save("draft")} disabled={!!saving || !text.trim()}>
                 {saving === "draft" ? <Loader2 className="animate-spin" /> : <Save />} Save draft
               </Button>
             </div>
+
+            <AiRevisionPanel title={title} contentType={contentType} text={text} onApply={applyAiRevision} />
 
             {hasRun && (
               <div className="rounded-2xl border border-border p-4">

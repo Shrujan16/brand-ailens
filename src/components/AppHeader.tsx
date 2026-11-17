@@ -39,7 +39,7 @@ export function AppHeader() {
 
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground lg:inline-flex">
-            <CpuIcon className="h-3 w-3" /> AI assistance: off (rules-only mode)
+            <CpuIcon className="h-3 w-3" /> Checks: rules-only · AI suggestions on request
           </span>
           <RoleSwitch role={role} setRole={setRole} />
         </div>
@@ -59,7 +59,7 @@ export function AppHeader() {
         ))}
       </nav>
       <div className="flex items-center justify-center gap-1.5 border-t border-border bg-muted px-3 py-1 text-[11px] text-muted-foreground lg:hidden">
-        <CpuIcon className="h-3 w-3" /> AI assistance: off (rules-only mode)
+        <CpuIcon className="h-3 w-3" /> Checks: rules-only · AI suggestions on request
       </div>
     </header>
   );

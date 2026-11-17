@@ -113,6 +113,12 @@ function ReviewDetail() {
     setBusy(decision === "approved" ? "approve" : "changes");
     try {
       await decideFn({ data: { submissionId: id, role, decision, comment: comment.trim() } });
+      window.__lovableEvents?.track?.("project.review_decision_made", {
+        decision,
+        revision: s.revision,
+        open_findings: open.length,
+        resolved_findings: fixed.length + dismissed.length,
+      });
       setComment("");
       await refresh();
       toast.success(decision === "approved" ? "Approved for publishing" : "Changes requested");
