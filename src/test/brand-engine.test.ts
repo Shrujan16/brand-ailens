@@ -57,7 +57,7 @@ describe("terminology", () => {
   it("flags Green Leaf and Greenleaf and suggests GreenLeaf Organics", () => {
     const f = check("Green Leaf and Greenleaf are wrong.").filter((x) => x.category === "Terminology");
     expect(f.map((x) => x.matchedText)).toEqual(["Green Leaf", "Greenleaf"]);
-    expect(f[0].suggestion).toBe("GreenLeaf Organics");
+    expect(f[0]?.suggestion).toBe("GreenLeaf Organics");
   });
   it("replaces vegan-certified with plant-based", () => {
     const f = check("It is vegan-certified.").find((x) => x.ruleRef === "term:plant-based");

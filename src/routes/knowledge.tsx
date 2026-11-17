@@ -334,8 +334,8 @@ function AddRow({ table, fields, defaults }: { table: Table; fields: Field[]; de
     setBusy(true);
     try {
       const payload = fromDraft(draft, fields);
-      if (table === "approved_facts" && !payload.fact_key) {
-        payload.fact_key = String(payload.label || "fact").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      if (table === "approved_facts" && !payload["fact_key"]) {
+        payload["fact_key"] = String(payload["label"] || "fact").toLowerCase().replace(/[^a-z0-9]+/g, "_");
       }
       await save("insert", payload);
       toast.success("Added");

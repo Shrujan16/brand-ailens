@@ -20,7 +20,8 @@ export function HighlightedText({
   const sorted = [...ranges].filter((r) => r.start >= 0 && r.end > r.start).sort((a, b) => a.start - b.start);
   const kept: HighlightRange[] = [];
   for (const r of sorted) {
-    if (kept.length && r.start < kept[kept.length - 1].end) continue;
+    const last = kept[kept.length - 1];
+    if (last && r.start < last.end) continue;
     kept.push(r);
   }
   const parts: Array<string | HighlightRange> = [];

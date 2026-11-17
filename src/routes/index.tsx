@@ -52,7 +52,7 @@ interface Resolution {
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>): { edit?: string } =>
-    typeof search.edit === "string" ? { edit: search.edit } : {},
+    typeof search["edit"] === "string" ? { edit: search["edit"] } : {},
   head: () => ({
     meta: [
       { title: "Create & check content — BrandLens" },
@@ -175,7 +175,10 @@ function CreatorPage() {
 
   async function onPickFile(file: File | undefined) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) return toast.error("Please choose an image file.");
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
     setUploading(true);
     try {
       const path = await uploadImage(file);
@@ -202,7 +205,10 @@ function CreatorPage() {
   }
 
   async function save(status: "draft" | "in_review") {
-    if (!text.trim()) return toast.error("Add some content first.");
+    if (!text.trim()) {
+      toast.error("Add some content first.");
+      return;
+    }
     setSaving(status);
     try {
       const current = runBrandCheck(input, knowledge).filter((f) => !dismissed.has(f.key));

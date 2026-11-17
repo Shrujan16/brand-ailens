@@ -28,3 +28,10 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules (BrandLens)
+
+- Brand checks run in `src/lib/brand-engine.ts` as pure deterministic TypeScript (no AI); every rule reads its data from the brand_rules / approved_facts / terminology tables so editing Brand Knowledge changes checks without code changes. Cover rule changes in `src/test/brand-engine.test.ts`.
+- The app has no sign-in by design (demo for judges): tables use open anon RLS policies and the Creator/Reviewer role is a client-side switch in `src/lib/role.tsx`. Add real auth before using with private data.
+- Submission images live in the private `submission-images` bucket and are shown through signed URLs via `resolveImageUrl` in `src/lib/data.ts` (public buckets are blocked in this workspace).
+- Findings are stored per submission revision; revision history is the audit_log rows (submitted entries carry a body snapshot).

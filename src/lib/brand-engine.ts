@@ -101,7 +101,7 @@ function loosePhraseRegex(phrase: string) {
 
 function matchCase(source: string, replacement: string) {
   if (!replacement) return replacement;
-  if (/^[A-Z]/.test(source)) return replacement[0].toUpperCase() + replacement.slice(1);
+  if (/^[A-Z]/.test(source)) return replacement.charAt(0).toUpperCase() + replacement.slice(1);
   return replacement;
 }
 
@@ -286,13 +286,13 @@ function checkFacts(out: Finding[], text: string, facts: ApprovedFact[], sentenc
       }
     }
     if (!contexts.length) continue;
-    for (const type of Object.keys(NUMBER_PATTERNS)) {
-      const re = new RegExp(NUMBER_PATTERNS[type].source, NUMBER_PATTERNS[type].flags);
+    for (const [type, pattern] of Object.entries(NUMBER_PATTERNS)) {
+      const re = new RegExp(pattern.source, pattern.flags);
       const candidates = contexts.filter((c) => c.fact.fact_type === type);
       if (!candidates.length) continue;
       let m: RegExpExecArray | null;
       while ((m = re.exec(s.text))) {
-        const numStr = m[1];
+        const numStr = m[1] ?? m[0];
         const value = parseFloat(numStr.replace(/,/g, ""));
         const numPos = m.index + m[0].lastIndexOf(numStr);
         // Prefer the closest context term written before the number; terms after it are penalised.
@@ -343,7 +343,7 @@ function splitSuggestion(sentence: string): string | null {
   const before = sentence.slice(0, best.idx).replace(/[,;\s]+$/, "");
   const after = sentence.slice(best.idx + best.len).trim();
   if (!after) return null;
-  return `${before}. ${after[0].toUpperCase()}${after.slice(1)}`;
+  return `${before}. ${after.charAt(0).toUpperCase()}${after.slice(1)}`;
 }
 
 const CAPS_ALLOW = new Set(["GST", "FSSAI", "INR", "USDA", "NPOP", "COVID"]);
@@ -371,7 +371,7 @@ function checkReadability(out: Finding[], text: string, rules: BrandRule[], sent
         });
       }
     } else if (rule.value) {
-      const re = new RegExp(`${escapeRegex(rule.value[0])}{${rule.value.length},}`, "g");
+      const re = new RegExp(`${escapeRegex(rule.value.charAt(0))}{${rule.value.length},}`, "g");
       let m: RegExpExecArray | null;
       while ((m = re.exec(text))) {
         out.push({
@@ -406,7 +406,7 @@ function checkReadability(out: Finding[], text: string, rules: BrandRule[], sent
         matchedText: m[0],
         citation: `Brand rule · ${tone.label}`,
         explanation: "ALL-CAPS reads as shouting. Our tone is warm and simple.",
-        suggestion: m[0][0] + m[0].slice(1).toLowerCase(),
+        suggestion: m[0].charAt(0) + m[0].slice(1).toLowerCase(),
       });
     }
   }

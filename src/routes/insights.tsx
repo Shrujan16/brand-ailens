@@ -40,9 +40,12 @@ function InsightsPage() {
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count);
 
+  // Group by the rule that fired; label with its citation (without the fact's full statement).
+  const ruleLabel = (citation: string) =>
+    citation.replace(/^(Brand rule|Terminology):\s*/, "$1 · ").split(": ")[0] ?? citation;
   const topRules = Object.entries(
     findings.reduce<Record<string, number>>((acc, f) => {
-      const k = f.citation.split(":")[0];
+      const k = ruleLabel(f.citation);
       acc[k] = (acc[k] ?? 0) + 1;
       return acc;
     }, {}),

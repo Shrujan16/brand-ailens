@@ -101,9 +101,13 @@ function ReviewDetail() {
   }
 
   async function decide(decision: "approved" | "changes_requested") {
-    if (!isReviewer) return toast.error("Only a Reviewer can do this.");
+    if (!isReviewer) {
+      toast.error("Only a Reviewer can do this.");
+      return;
+    }
     if (decision === "changes_requested" && !comment.trim()) {
-      return toast.error("Add a comment explaining what needs to change.");
+      toast.error("Add a comment explaining what needs to change.");
+      return;
     }
     setBusy(decision === "approved" ? "approve" : "changes");
     try {
