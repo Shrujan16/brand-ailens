@@ -12,6 +12,8 @@ import {
   Trash2,
   CheckCircle2,
   MessageSquareWarning,
+  ArrowDown,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +42,9 @@ import {
   contrastRatio,
   runBrandCheck,
   type Finding,
+  type SpellChecker,
 } from "@/lib/brand-engine";
+import { loadSpellChecker } from "@/lib/spellcheck";
 import { useRole } from "@/lib/role";
 import exampleImage from "@/assets/example-almond-crunch.jpg";
 
@@ -105,6 +109,19 @@ function CreatorPage() {
   const [saving, setSaving] = useState<null | "draft" | "in_review">(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const saveSubmissionFn = useServerFn(saveSubmission);
+  const [spell, setSpell] = useState<SpellChecker | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    loadSpellChecker()
+      .then((s) => active && setSpell(s))
+      .catch(() => {
+        // Spelling is optional; the other checks still run without the dictionary.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const editing: Submission | null = edit ? (submissions.find((s) => s.id === edit) ?? null) : null;
 
@@ -136,8 +153,8 @@ function CreatorPage() {
   );
 
   const findings = useMemo(
-    () => (hasRun ? runBrandCheck(input, knowledge).filter((f) => !dismissed.has(f.key)) : []),
-    [hasRun, input, knowledge, dismissed],
+    () => (hasRun ? runBrandCheck(input, knowledge, { spell }).filter((f) => !dismissed.has(f.key)) : []),
+    [hasRun, input, knowledge, dismissed, spell],
   );
 
   const score = Math.max(0, 100 - findings.reduce((n, f) => n + SEVERITY_WEIGHT[f.severity], 0));
@@ -194,7 +211,7 @@ function CreatorPage() {
   }
 
   function runCheck() {
-    const found = runBrandCheck(input, knowledge).filter((f) => !dismissed.has(f.key));
+    const found = runBrandCheck(input, knowledge, { spell }).filter((f) => !dismissed.has(f.key));
     setHasRun(true);
     const by = (s: Finding["severity"]) => found.filter((f) => f.severity === s).length;
     window.__lovableEvents?.track?.("project.brand_check_run", {
@@ -245,7 +262,7 @@ function CreatorPage() {
     }
     setSaving(status);
     try {
-      const current = runBrandCheck(input, knowledge).filter((f) => !dismissed.has(f.key));
+      const current = runBrandCheck(input, knowledge, { spell }).filter((f) => !dismissed.has(f.key));
       setHasRun(true);
       const base = {
         title: title.trim() || "Untitled",
@@ -321,28 +338,47 @@ function CreatorPage() {
   return (
     <div className="bg-leaf">
       <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
-        <section className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <section className="mb-8 grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:items-end">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Creator studio</p>
-            <h1 className="mt-1 text-3xl font-semibold text-primary-deep md:text-4xl">
-              {editing ? `Revising “${editing.title}”` : "Check it before it ships."}
+            <h1 className="mt-1 text-3xl font-semibold text-primary-deep md:text-4xl lg:text-[2.75rem] lg:leading-tight">
+              {editing ? `Revising “${editing.title}”` : "Catch the errors in your content before your audience does."}
             </h1>
-            <p className="mt-2 max-w-xl text-muted-foreground">
-              BrandLens checks your copy against GreenLeaf’s tone, approved facts, terminology and visual rules —
-              with deterministic rules. Ask AI for a revision when you want one.
+            <p className="mt-3 max-w-2xl text-muted-foreground">
+              Paste your post, ad or email before you publish. BrandLens checks it against your brand rules, approved
+              facts and terminology, and flags mistakes, brand issues and exaggerated claims, so you don’t get called
+              out later.
             </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="harvest" onClick={loadExample}>
-              <Sparkles /> Load example
-            </Button>
-            {(editing || text) && (
-              <Button variant="ghost" onClick={resetForm}>
-                <Trash2 /> Clear
+            <div className="mt-5 flex flex-wrap gap-2">
+              {!editing && (
+                <Button variant="hero" asChild>
+                  <a href="#checker">
+                    <ArrowDown /> Start checking
+                  </a>
+                </Button>
+              )}
+              <Button variant="harvest" onClick={loadExample}>
+                <Sparkles /> Load example
               </Button>
-            )}
+              {(editing || text) && (
+                <Button variant="ghost" onClick={resetForm}>
+                  <Trash2 /> Clear
+                </Button>
+              )}
+            </div>
           </div>
+          {!editing && (
+            <aside className="rounded-3xl border border-border bg-card p-5 shadow-soft">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">Who is this for?</h2>
+              <p className="mt-2 text-sm leading-6 text-foreground">
+                Built for the marketing, advertising and social-media teams of GreenLeaf Organics, a demo brand created
+                for this hackathon. It is an internal brand-governance tool, open to judges for evaluation.
+              </p>
+            </aside>
+          )}
         </section>
+
+        {!editing && <HowItWorks />}
 
         {editing && editing.status === "changes_requested" && (
           <div className="mb-6 flex items-start gap-3 rounded-2xl border border-sev-high/30 bg-sev-high-soft p-4 text-sm">
@@ -357,7 +393,7 @@ function CreatorPage() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <div id="checker" className="grid scroll-mt-20 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           {/* Editor */}
           <section className="space-y-5 rounded-3xl border border-border bg-card p-5 shadow-soft md:p-6">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -554,6 +590,8 @@ function CreatorPage() {
           </section>
         </div>
 
+        {!editing && <CheckCoverage />}
+
         <RecentSubmissions submissions={submissions} />
       </div>
     </div>
@@ -582,9 +620,16 @@ function RecentSubmissions({ submissions }: { submissions: Submission[] }) {
   if (!submissions.length) return null;
   return (
     <section className="mt-12">
-      <h2 className="text-xl font-semibold text-primary-deep">Recent submissions</h2>
+      <div className="flex items-end justify-between gap-3">
+        <h2 className="text-xl font-semibold text-primary-deep">Recent submissions</h2>
+        <Button asChild size="sm" variant="ghost">
+          <Link to="/review">
+            View all <ArrowRight />
+          </Link>
+        </Button>
+      </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {submissions.slice(0, 6).map((s) => (
+        {submissions.slice(0, 3).map((s) => (
           <div key={s.id} className="flex flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
             <div className="flex items-start justify-between gap-2">
               <div className="font-semibold text-foreground">{s.title}</div>
@@ -610,6 +655,94 @@ function RecentSubmissions({ submissions }: { submissions: Submission[] }) {
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+const STEPS = [
+  "Paste or upload your content.",
+  "Run Brand Check and review each finding.",
+  "Fix it, submit for review, and a reviewer approves.",
+];
+
+function HowItWorks() {
+  return (
+    <section aria-labelledby="how-it-works" className="mb-6">
+      <h2 id="how-it-works" className="sr-only">
+        How it works
+      </h2>
+      <ol className="grid gap-2 sm:grid-cols-3">
+        {STEPS.map((step, i) => (
+          <li key={step} className="flex items-center gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3 text-sm">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground">
+              {i + 1}
+            </span>
+            <span className="text-foreground">{step}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+const COVERAGE: Array<{ status: "Available" | "Planned" | "Not supported yet"; label: string }> = [
+  { status: "Available", label: "Text (captions, posts, ads, emails): full checks" },
+  { status: "Available", label: "Images: alt text and text-on-colour contrast" },
+  { status: "Planned", label: "Poster checks (logo, brand colours, text inside images)" },
+  { status: "Not supported yet", label: "Video" },
+];
+
+const STATUS_STYLE = {
+  Available: "bg-success-soft text-primary-deep border-primary/30",
+  Planned: "bg-harvest-soft text-harvest-foreground border-harvest/40",
+  "Not supported yet": "bg-muted text-muted-foreground border-border",
+} as const;
+
+const CHECKS = [
+  ["Brand voice", "wording and tone that sound like the brand (no hype like “best in India”)."],
+  ["Facts", "prices, delivery terms and dates must match the approved facts."],
+  ["Terminology", "brand and product names written correctly."],
+  ["Visual", "alt text and readable colours."],
+  ["Claims", "exaggerated or unsupported claims such as “guaranteed”."],
+  ["Spelling and grammar", "typing mistakes and basic grammar slips."],
+] as const;
+
+function CheckCoverage() {
+  return (
+    <section className="mt-12 grid gap-6 lg:grid-cols-2">
+      <div className="rounded-3xl border border-border bg-card p-5 shadow-soft md:p-6">
+        <h2 className="text-xl font-semibold text-primary-deep">What can it check?</h2>
+        <ul className="mt-4 space-y-2.5">
+          {COVERAGE.map((c) => (
+            <li key={c.label} className="flex flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:gap-3">
+              <span
+                className={`inline-flex w-fit shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[c.status]}`}
+              >
+                {c.status}
+              </span>
+              <span className="text-foreground">{c.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="rounded-3xl border border-border bg-card p-5 shadow-soft md:p-6">
+        <h2 className="text-xl font-semibold text-primary-deep">What does BrandLens check?</h2>
+        <ul className="mt-4 space-y-2 text-sm">
+          {CHECKS.map(([name, text]) => (
+            <li key={name} className="flex gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                <span className="font-semibold text-foreground">{name}:</span>{" "}
+                <span className="text-muted-foreground">{text}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
+          BrandLens checks against the company’s own rules. It is not legal advice; legal and regulatory checks are
+          planned. A human reviewer always makes the final decision.
+        </p>
       </div>
     </section>
   );

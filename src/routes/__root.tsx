@@ -145,8 +145,12 @@ function RootComponent() {
             {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
             <Outlet />
           </main>
-          <footer className="border-t border-border py-5 text-center text-xs text-muted-foreground">
-            BrandLens · Demo brand: GreenLeaf Organics · Deterministic checks · optional AI suggestions
+          <footer className="space-y-1 border-t border-border px-4 py-5 text-center text-xs text-muted-foreground">
+            <p>BrandLens · Demo brand: GreenLeaf Organics · Deterministic checks · optional AI suggestions</p>
+            <p>
+              Built with Lovable (AI-assisted development). Checks are rule-based; AI revision suggestions are optional
+              and always reviewed by a human.
+            </p>
           </footer>
         </div>
         <Toaster richColors position="top-center" />

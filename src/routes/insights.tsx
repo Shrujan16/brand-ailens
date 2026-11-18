@@ -39,6 +39,10 @@ function InsightsPage() {
   )
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count);
+  // Spelling & Grammar always appears in the chart, even before any such finding exists.
+  const chartData = byCategory.some((c) => c.category === "Spelling & Grammar")
+    ? byCategory
+    : [...byCategory, { category: "Spelling & Grammar", count: 0 }];
 
   // Group by the rule that fired; label with its citation (without the fact's full statement).
   const ruleLabel = (citation: string) =>
@@ -79,7 +83,7 @@ function InsightsPage() {
             <p className="mt-6 text-sm text-muted-foreground">No findings yet.</p>
           ) : (
             <ChartContainer config={chartConfig} className="mt-4 h-[320px] w-full">
-              <BarChart data={byCategory} layout="vertical" margin={{ left: 12, right: 16 }}>
+              <BarChart data={chartData} layout="vertical" margin={{ left: 12, right: 16 }}>
                 <CartesianGrid horizontal={false} />
                 <XAxis type="number" allowDecimals={false} />
                 <YAxis type="category" dataKey="category" width={130} tickLine={false} axisLine={false} />

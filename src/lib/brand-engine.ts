@@ -4,6 +4,10 @@
  * a cited rule/fact, a plain explanation and (when possible) a suggested fix.
  */
 
+import { checkGrammar, checkSpelling, type SpellChecker } from "./spelling-grammar";
+
+export type { SpellChecker } from "./spelling-grammar";
+
 export type Severity = "high" | "medium" | "low";
 export type FixTarget = "text" | "alt" | "textColor" | "bgColor";
 
@@ -55,7 +59,8 @@ export type Category =
   | "Accessibility"
   | "Contrast"
   | "Brand colour"
-  | "Tone & readability";
+  | "Tone & readability"
+  | "Spelling & Grammar";
 
 export interface Finding {
   key: string;
@@ -501,8 +506,40 @@ function overlaps(a: Finding, b: Finding) {
   return a.start < b.end && a.end > b.start;
 }
 
+export interface CheckOptions {
+  /** Dictionary spell checker; spelling is skipped when absent (e.g. before it loads, or on the server). */
+  spell?: SpellChecker | null | undefined;
+}
+
+/** Brand vocabulary from Brand Knowledge that the spell checker must never flag. */
+export function brandVocabulary(knowledge: Knowledge): Set<string> {
+  const words = new Set<string>();
+  const add = (s: string | null | undefined) =>
+    (s ?? "")
+      .toLowerCase()
+      .replace(/’/g, "'")
+      .split(/[^a-z']+/)
+      .forEach((w) => w && words.add(w.replace(/'s$/, "")));
+  for (const t of knowledge.terms) {
+    add(t.preferred);
+    t.incorrect.forEach(add);
+    add(t.requires_phrase);
+  }
+  for (const f of knowledge.facts) {
+    add(f.label);
+    f.context_terms.forEach(add);
+  }
+  for (const r of knowledge.rules) {
+    if (r.kind === "banned_phrase" || r.kind === "superlative") {
+      add(r.value);
+      add(r.suggestion);
+    }
+  }
+  return words;
+}
+
 /** Run every check and return de-duplicated findings ordered by position. */
-export function runBrandCheck(input: CheckInput, knowledge: Knowledge): Finding[] {
+export function runBrandCheck(input: CheckInput, knowledge: Knowledge, options: CheckOptions = {}): Finding[] {
   const text = input.text ?? "";
   const sentences = splitSentences(text);
   const raw: Finding[] = [];
@@ -516,6 +553,8 @@ export function runBrandCheck(input: CheckInput, knowledge: Knowledge): Finding[
   checkTerminology(raw, text, knowledge.terms, sentences);
   checkFacts(raw, text, knowledge.facts, sentences);
   checkReadability(raw, text, knowledge.rules, sentences);
+  checkGrammar(raw, text);
+  if (options.spell) checkSpelling(raw, text, options.spell, brandVocabulary(knowledge));
 
   // De-duplicate overlapping inline findings, keeping the most severe / longest.
   const inline = raw.filter((f) => f.ruleRef !== "readability:length");
