@@ -26,6 +26,8 @@ import { HighlightedText } from "@/components/HighlightedText";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmissionImage } from "@/components/SubmissionImage";
 import { AiRevisionPanel } from "@/components/AiRevisionPanel";
+import { AiEditsPanel } from "@/components/AiEditsPanel";
+import { applySingleEdit, type RecommendedEdit } from "@/lib/edit-recommendations";
 import { useServerFn } from "@tanstack/react-start";
 import { saveSubmission } from "@/lib/brandlens.functions";
 import {
@@ -238,6 +240,43 @@ function CreatorPage() {
     setDismissed(new Set());
     setResolutions([]);
     toast.success("Revision applied", { description: "Findings now reflect the revised draft." });
+  }
+
+  /**
+   * Applies AI-recommended edits in order against the current draft. Findings inside an edited
+   * span count as resolved ("edited"). Returns the ids of edits that were applied.
+   */
+  function applyAiEdits(edits: RecommendedEdit[]): Set<string> {
+    let current = text;
+    const applied = new Set<string>();
+    const covered: Resolution[] = [];
+    const claimed = new Set<string>();
+    for (const edit of edits) {
+      const next = applySingleEdit(current, edit);
+      if (next == null) continue;
+      if (current === text) {
+        // Positions of the current findings only refer to the unedited draft.
+        const from = text.startsWith(edit.original, edit.start) ? edit.start : text.indexOf(edit.original);
+        const to = from + edit.original.length;
+        for (const f of findings) {
+          const k = `${f.key}@${f.start}`;
+          if (f.target !== "text" || f.ruleRef === "readability:length" || claimed.has(k)) continue;
+          if (from >= 0 && f.start >= from && f.end <= to) {
+            claimed.add(k);
+            covered.push({ finding: f, action: "edited", applied: edit.replacement });
+          }
+        }
+      }
+      current = next;
+      applied.add(edit.id);
+    }
+    if (!applied.size) return applied;
+    setText(current);
+    if (covered.length) {
+      setResolutions((r) => [...r, ...covered]);
+      covered.forEach((c) => trackResolution(c.finding, "edited"));
+    }
+    return applied;
   }
 
   function applyFinding(f: Finding, value: string, action: "accepted" | "edited") {
@@ -552,6 +591,16 @@ function CreatorPage() {
                     </p>
                   )}
                 </div>
+
+                {findings.some((f) => f.target === "text") && (
+                  <AiEditsPanel
+                    title={title}
+                    contentType={contentType}
+                    text={text}
+                    findings={findings}
+                    onApplyEdits={applyAiEdits}
+                  />
+                )}
 
                 {findings.length === 0 ? (
                   <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-success-soft p-4 text-sm">
