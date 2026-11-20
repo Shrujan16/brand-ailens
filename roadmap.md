@@ -6,4 +6,4 @@
 - [x] Recent submissions: 3 most recent + "View all" link
 - [x] Footer note about Lovable / rule-based checks
 - [ ] Security fixes for the 7 selected findings — waiting on user's choice (A: real sign-in, B: open demo + reviewer passcode)
-- [ ] AI edit recommendations: model combines spelling & grammar + brand findings into specific edits the creator applies one by one
+- [x] AI edit recommendations: model combines spelling & grammar + brand findings into specific edits the creator applies one by one
