@@ -2,6 +2,11 @@
  * All BrandLens data access goes through these server functions. Browsers have no direct
  * table or storage access (RLS denies anon/authenticated); each function validates its input
  * and performs only the narrow operation the app needs.
+ *
+ * There is no sign-in. Each browser gets a private workspace: a random secret in an
+ * HttpOnly cookie, stored only as a SHA-256 hash on the submissions it owns. Submissions,
+ * findings, comments, decisions and uploaded images are scoped to that workspace; rows
+ * marked is_sample are read-only examples every visitor can view.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -9,6 +14,63 @@ import { z } from "zod";
 async function admin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+const WS_COOKIE = "bl_ws";
+const WS_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Returns the caller's workspace hash from the private cookie. With create=true a missing
+ * or malformed cookie is replaced by a fresh random one (only writes create workspaces).
+ */
+async function workspace(create: true): Promise<string>;
+async function workspace(create: false): Promise<string | null>;
+async function workspace(create: boolean): Promise<string | null> {
+  const { getCookie, setCookie } = await import("@tanstack/react-start/server");
+  let token = getCookie(WS_COOKIE);
+  if (!token || !WS_TOKEN.test(token)) {
+    if (!create) return null;
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    setCookie(WS_COOKIE, token, {
+      httpOnly: true,
+      secure: true,
+      // The editor preview runs in a cross-site frame; Partitioned keeps the cookie per top-level site.
+      sameSite: "none",
+      partitioned: true,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 400,
+    });
+  }
+  return sha256Hex(token);
+}
+
+/** PostgREST filter for submissions the caller may read: examples plus their own. */
+function visibleFilter(ws: string | null) {
+  return ws ? `is_sample.eq.true,workspace_hash.eq.${ws}` : "is_sample.eq.true";
+}
+
+type SubmissionRow = { workspace_hash: string | null; is_sample: boolean };
+/** Strip the owner hash before returning a submission to the browser. */
+function publicSubmission<T extends SubmissionRow>(row: T) {
+  const { workspace_hash: _owner, ...rest } = row;
+  return rest;
+}
+
+/** Loads a submission the caller owns (examples are read-only), or throws. */
+async function ownedSubmission(id: string) {
+  const ws = await workspace(false);
+  const db = await admin();
+  const { data, error } = await db.from("submissions").select("id, status, revision, workspace_hash, is_sample").eq("id", id).maybeSingle();
+  if (error) fail("load submission", error);
+  if (data?.is_sample) throw new Error("Example submissions are read-only. Submit your own from the Create page to try this.");
+  if (!data || !ws || data.workspace_hash !== ws) throw new Error("Submission not found.");
+  return { db, sub: data, ws };
 }
 
 function fail(context: string, error: unknown): never {
@@ -27,7 +89,8 @@ const uuid = z.string().uuid();
 const role = z.enum(["creator", "reviewer"]);
 const severity = z.enum(["high", "medium", "low"]);
 const hex = z.string().regex(/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/);
-const IMAGE_PATH = /^uploads\/[0-9a-f-]{36}\.(jpg|jpeg|png|webp|gif)$/;
+// New uploads live under the owner's workspace hash; older example images have no folder.
+const IMAGE_PATH = /^uploads\/(?:[0-9a-f]{64}\/)?[0-9a-f-]{36}\.(jpg|jpeg|png|webp|gif)$/;
 // Storage path for uploads, or a bundled example image served by the app itself.
 const imageRef = z
   .string()
@@ -52,17 +115,29 @@ export const getKnowledge = createServerFn({ method: "GET" }).handler(async () =
 });
 
 export const listSubmissions = createServerFn({ method: "GET" }).handler(async () => {
+  const ws = await workspace(false);
   const db = await admin();
-  const { data, error } = await db.from("submissions").select("*").order("updated_at", { ascending: false }).limit(500);
+  const { data, error } = await db
+    .from("submissions")
+    .select("*")
+    .or(visibleFilter(ws))
+    .order("updated_at", { ascending: false })
+    .limit(200);
   if (error) fail("load submissions", error);
-  return data;
+  return data.map(publicSubmission);
 });
 
 export const listAllFindings = createServerFn({ method: "GET" }).handler(async () => {
+  const ws = await workspace(false);
   const db = await admin();
+  const subs = await db.from("submissions").select("id").or(visibleFilter(ws)).limit(200);
+  if (subs.error) fail("load findings", subs.error);
+  const ids = subs.data.map((s) => s.id);
+  if (!ids.length) return [];
   const { data, error } = await db
     .from("findings")
     .select("id, submission_id, revision, category, severity, status, citation, rule_ref")
+    .in("submission_id", ids)
     .limit(5000);
   if (error) fail("load findings", error);
   return data;
@@ -71,17 +146,22 @@ export const listAllFindings = createServerFn({ method: "GET" }).handler(async (
 export const getSubmissionDetail = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => parse(z.object({ id: uuid }), input))
   .handler(async ({ data }) => {
+    const ws = await workspace(false);
     const db = await admin();
-    const [sub, findings, comments, audit] = await Promise.all([
-      db.from("submissions").select("*").eq("id", data.id).maybeSingle(),
+    const sub = await db.from("submissions").select("*").eq("id", data.id).maybeSingle();
+    if (sub.error) fail("load submission", sub.error);
+    const visible = !!sub.data && (sub.data.is_sample || (!!ws && sub.data.workspace_hash === ws));
+    if (!visible) return { submission: null, readOnly: true, findings: [], comments: [], audit: [] };
+    const [findings, comments, audit] = await Promise.all([
       db.from("findings").select("*").eq("submission_id", data.id).order("created_at"),
       db.from("comments").select("*").eq("submission_id", data.id).order("created_at"),
       db.from("audit_log").select("*").eq("submission_id", data.id).order("created_at", { ascending: false }),
     ]);
-    const err = sub.error ?? findings.error ?? comments.error ?? audit.error;
+    const err = findings.error ?? comments.error ?? audit.error;
     if (err) fail("load submission", err);
     return {
-      submission: sub.data,
+      submission: publicSubmission(sub.data!),
+      readOnly: sub.data!.is_sample,
       findings: findings.data ?? [],
       comments: comments.data ?? [],
       audit: (audit.data ?? []).map((a) => ({ ...a, details: (a.details ?? {}) as Record<string, string | number | null> })),
@@ -121,6 +201,9 @@ const saveInput = z.object({
 export const saveSubmission = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => parse(saveInput, input))
   .handler(async ({ data }) => {
+    const ws = await workspace(true);
+    if (data.image_url?.startsWith("uploads/") && !data.image_url.startsWith(`uploads/${ws}/`))
+      throw new Error("Please upload the image again.");
     const db = await admin();
     const base = {
       title: data.title || "Untitled",
@@ -138,13 +221,7 @@ export const saveSubmission = createServerFn({ method: "POST" })
     let action = data.status === "draft" ? "draft_saved" : "submitted";
 
     if (data.editId) {
-      const { data: existing, error } = await db
-        .from("submissions")
-        .select("id, status, revision")
-        .eq("id", data.editId)
-        .maybeSingle();
-      if (error) fail("save submission", error);
-      if (!existing) throw new Error("Submission not found.");
+      const { sub: existing } = await ownedSubmission(data.editId);
       if (existing.status === "in_review") throw new Error("This submission is already in review.");
       id = existing.id;
       revision =
@@ -159,7 +236,7 @@ export const saveSubmission = createServerFn({ method: "POST" })
     } else {
       const ins = await db
         .from("submissions")
-        .insert({ ...base, revision, author_name: "Creator" })
+        .insert({ ...base, revision, author_name: "Creator", workspace_hash: ws, is_sample: false })
         .select("id")
         .single();
       if (ins.error) fail("save submission", ins.error);
@@ -187,15 +264,14 @@ export const addComment = createServerFn({ method: "POST" })
     parse(z.object({ submissionId: uuid, role, body: z.string().trim().min(1).max(2000) }), input),
   )
   .handler(async ({ data }) => {
-    const db = await admin();
-    const ins = await db.from("comments").insert({ submission_id: data.submissionId, author_role: data.role, body: data.body });
+    const { db, sub } = await ownedSubmission(data.submissionId);
+    const ins = await db.from("comments").insert({ submission_id: sub.id, author_role: data.role, body: data.body });
     if (ins.error) fail("post comment", ins.error);
-    const sub = await db.from("submissions").select("revision").eq("id", data.submissionId).maybeSingle();
     await db.from("audit_log").insert({
-      submission_id: data.submissionId,
+      submission_id: sub.id,
       actor_role: data.role,
       action: "commented",
-      details: { revision: sub.data?.revision ?? null },
+      details: { revision: sub.revision },
     });
     return { ok: true };
   });
@@ -216,10 +292,7 @@ export const decideSubmission = createServerFn({ method: "POST" })
     ),
   )
   .handler(async ({ data }) => {
-    const db = await admin();
-    const { data: sub, error } = await db.from("submissions").select("status, revision").eq("id", data.submissionId).maybeSingle();
-    if (error) fail("update submission", error);
-    if (!sub) throw new Error("Submission not found.");
+    const { db, sub } = await ownedSubmission(data.submissionId);
     if (sub.status === "draft") throw new Error("Drafts must be submitted before review.");
     if (data.comment) {
       const c = await db.from("comments").insert({ submission_id: data.submissionId, author_role: "reviewer", body: data.comment });
@@ -322,8 +395,9 @@ export const uploadSubmissionImage = createServerFn({ method: "POST" })
     return { file };
   })
   .handler(async ({ data }) => {
+    const ws = await workspace(true);
     const db = await admin();
-    const path = `uploads/${crypto.randomUUID()}.${IMAGE_TYPES[data.file.type]}`;
+    const path = `uploads/${ws}/${crypto.randomUUID()}.${IMAGE_TYPES[data.file.type]}`;
     const { error } = await db.storage
       .from(IMAGE_BUCKET)
       .upload(path, await data.file.arrayBuffer(), { contentType: data.file.type, upsert: false });
@@ -334,7 +408,14 @@ export const uploadSubmissionImage = createServerFn({ method: "POST" })
 export const getImageUrl = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => parse(z.object({ path: z.string().regex(IMAGE_PATH) }), input))
   .handler(async ({ data }) => {
+    const ws = await workspace(false);
     const db = await admin();
+    const own = !!ws && data.path.startsWith(`uploads/${ws}/`);
+    if (!own) {
+      // Otherwise only images attached to an example submission may be shown.
+      const ex = await db.from("submissions").select("id").eq("is_sample", true).eq("image_url", data.path).limit(1);
+      if (ex.error || !ex.data.length) return { url: null };
+    }
     const { data: signed, error } = await db.storage.from(IMAGE_BUCKET).createSignedUrl(data.path, 60 * 60);
     if (error) return { url: null };
     return { url: signed.signedUrl };

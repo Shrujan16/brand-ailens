@@ -216,11 +216,13 @@ export type Database = {
           id: string
           image_alt: string
           image_url: string | null
+          is_sample: boolean
           revision: number
           status: string
           text_color: string | null
           title: string
           updated_at: string
+          workspace_hash: string | null
         }
         Insert: {
           author_name?: string
@@ -231,11 +233,13 @@ export type Database = {
           id?: string
           image_alt?: string
           image_url?: string | null
+          is_sample?: boolean
           revision?: number
           status?: string
           text_color?: string | null
           title?: string
           updated_at?: string
+          workspace_hash?: string | null
         }
         Update: {
           author_name?: string
@@ -246,11 +250,13 @@ export type Database = {
           id?: string
           image_alt?: string
           image_url?: string | null
+          is_sample?: boolean
           revision?: number
           status?: string
           text_color?: string | null
           title?: string
           updated_at?: string
+          workspace_hash?: string | null
         }
         Relationships: []
       }

@@ -77,6 +77,7 @@ function ReviewDetail() {
   const fixed = current.filter((f) => f.status === "accepted" || f.status === "edited");
   const dismissed = current.filter((f) => f.status === "dismissed");
   const isReviewer = role === "reviewer";
+  const readOnly = data.readOnly;
   const ratio = s.text_color && s.bg_color ? contrastRatio(s.text_color, s.bg_color) : null;
 
   async function refresh() {
@@ -140,12 +141,13 @@ function ReviewDetail() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-semibold text-primary-deep">{s.title}</h1>
             <StatusBadge status={s.status} />
+            {readOnly && <Badge variant="outline">Example</Badge>}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {s.content_type} · {s.author_name} · revision {s.revision} · updated {new Date(s.updated_at).toLocaleString()}
           </p>
         </div>
-        {(s.status === "changes_requested" || s.status === "draft") && (
+        {!readOnly && (s.status === "changes_requested" || s.status === "draft") && (
           <Button asChild variant="soft">
             <Link to="/" search={{ edit: s.id }}>
               <PenLine /> Revise as Creator
@@ -232,6 +234,16 @@ function ReviewDetail() {
                 </div>
               ))}
             </div>
+            {readOnly ? (
+              <p className="mt-4 rounded-xl bg-harvest-soft px-3 py-2 text-sm text-harvest-foreground">
+                This is a read-only example. Submit your own content from the{" "}
+                <Link to="/" className="font-semibold underline">
+                  Create page
+                </Link>{" "}
+                to comment, approve or request changes.
+              </p>
+            ) : (
+            <>
             <Textarea
               className="mt-4"
               rows={3}
@@ -272,6 +284,8 @@ function ReviewDetail() {
                 </p>
               )}
             </div>
+            </>
+            )}
           </section>
 
           <section className="rounded-3xl border border-border bg-card p-5 shadow-soft">

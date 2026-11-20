@@ -10,7 +10,8 @@ import {
   uploadSubmissionImage,
 } from "@/lib/brandlens.functions";
 
-export type Submission = Tables<"submissions">;
+/** Submissions as returned to the browser (the private owner hash is stripped server-side). */
+export type Submission = Omit<Tables<"submissions">, "workspace_hash">;
 export type FindingRow = Tables<"findings">;
 export type CommentRow = Tables<"comments">;
 export type RuleRow = Tables<"brand_rules">;

@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FindingCard } from "@/components/FindingCard";
 import { HighlightedText } from "@/components/HighlightedText";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { SubmissionImage } from "@/components/SubmissionImage";
 import { AiRevisionPanel } from "@/components/AiRevisionPanel";
 import { AiEditsPanel } from "@/components/AiEditsPanel";
@@ -125,7 +126,7 @@ function CreatorPage() {
     };
   }, []);
 
-  const editing: Submission | null = edit ? (submissions.find((s) => s.id === edit) ?? null) : null;
+  const editing: Submission | null = edit ? (submissions.find((s) => s.id === edit && !s.is_sample) ?? null) : null;
 
   useEffect(() => {
     if (!editing) return;
@@ -682,7 +683,10 @@ function RecentSubmissions({ submissions }: { submissions: Submission[] }) {
           <div key={s.id} className="flex flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
             <div className="flex items-start justify-between gap-2">
               <div className="font-semibold text-foreground">{s.title}</div>
-              <StatusBadge status={s.status} />
+              <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                {s.is_sample && <Badge variant="outline">Example</Badge>}
+                <StatusBadge status={s.status} />
+              </div>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {s.content_type} · revision {s.revision}
@@ -694,7 +698,7 @@ function RecentSubmissions({ submissions }: { submissions: Submission[] }) {
                   Open
                 </Link>
               </Button>
-              {(s.status === "draft" || s.status === "changes_requested") && (
+              {!s.is_sample && (s.status === "draft" || s.status === "changes_requested") && (
                 <Button asChild size="sm" variant="soft">
                   <Link to="/" search={{ edit: s.id }}>
                     Revise

@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { ChevronRight, Inbox } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { allFindingsQuery, STATUS_LABEL, submissionsQuery, type Status } from "@/lib/data";
 import { useRole } from "@/lib/role";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,9 @@ function ReviewQueue() {
           You’re viewing as a Creator. Switch to <strong>Reviewer</strong> in the header to approve content.
         </p>
       )}
+      <p className="mt-3 text-sm text-muted-foreground">
+        Your submissions are private to this browser. Items marked <strong>Example</strong> are read-only samples.
+      </p>
 
       <div className="mt-6 flex gap-2 overflow-x-auto pb-1">
         {FILTERS.map((f) => (
@@ -86,6 +90,7 @@ function ReviewQueue() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-foreground">{s.title}</span>
                   <StatusBadge status={s.status} />
+                  {s.is_sample && <Badge variant="outline">Example</Badge>}
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {s.content_type} · {s.author_name} · revision {s.revision} · {new Date(s.updated_at).toLocaleString()}
